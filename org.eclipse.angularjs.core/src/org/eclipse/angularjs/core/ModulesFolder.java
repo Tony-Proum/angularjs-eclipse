@@ -15,9 +15,11 @@ import java.util.List;
 
 import tern.angular.AngularType;
 import tern.angular.protocol.completions.TernAngularCompletionsQuery;
-import tern.eclipse.ide.core.scriptpath.ITernScriptPath;
+import tern.scriptpath.ITernScriptPath;
 import tern.server.ITernServer;
+import tern.server.protocol.IJSONObjectHelper;
 import tern.server.protocol.completions.ITernCompletionCollector;
+import tern.server.protocol.completions.TernCompletionProposalRec;
 
 public class ModulesFolder extends BaseModel implements
 		ITernCompletionCollector {
@@ -41,8 +43,8 @@ public class ModulesFolder extends BaseModel implements
 	}
 
 	@Override
-	public void addProposal(String name, String type, String doc, String url,
-			String origin, int pos, Object completion, ITernServer ternServer) {
-		modules.add(new Module(name, getScriptPath()));
+	public void addProposal(TernCompletionProposalRec proposal,
+			Object completion, IJSONObjectHelper jsonObjectHelper) {
+		modules.add(new Module(proposal.name, getScriptPath()));
 	}
 }

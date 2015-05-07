@@ -12,21 +12,7 @@
 #     Angelo Zerr <angelo.zerr@gmail.com> - Initial API and implementation 
 ###############################################################################
  -->
-<plugin>
-	
-	<extension-point id="angularNatureAdapters" name="%angularNatureAdapters.name"
-		schema="schema/angularNatureAdapters.exsd" />	
-	
-	<extension
-		id="angularnature"
-		name="%angularNature"
-		point="org.eclipse.core.resources.natures">
-		<runtime>
-			<run
-				class="org.eclipse.angularjs.core.AngularNature">
-			</run>
-		</runtime>
-	</extension>
+<plugin>	
 	
 	<!-- Preferences initialization -->
 	<extension

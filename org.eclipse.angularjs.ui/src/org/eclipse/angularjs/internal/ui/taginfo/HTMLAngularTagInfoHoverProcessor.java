@@ -26,8 +26,9 @@ import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IInformationControlCreator;
 import org.eclipse.jface.text.IRegion;
+import org.eclipse.jface.text.ITextHoverExtension2;
 import org.eclipse.jface.text.ITextViewer;
-import org.eclipse.jface.text.Region;
+import org.eclipse.jface.text.information.IInformationProviderExtension2;
 import org.eclipse.wst.html.ui.internal.taginfo.HTMLTagInfoHoverProcessor;
 import org.eclipse.wst.sse.core.internal.provisional.IndexedRegion;
 import org.eclipse.wst.sse.core.internal.provisional.text.IStructuredDocument;
@@ -40,30 +41,56 @@ import org.eclipse.wst.xml.core.internal.regions.DOMRegionContext;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import tern.ITernFile;
 import tern.angular.AngularType;
 import tern.angular.modules.Directive;
 import tern.angular.modules.DirectiveParameter;
 import tern.angular.protocol.TernAngularQuery;
 import tern.angular.protocol.type.TernAngularTypeQuery;
-import tern.eclipse.ide.core.IDETernProject;
-import tern.eclipse.ide.core.scriptpath.ITernScriptPath;
+import tern.eclipse.ide.core.IIDETernProject;
+import tern.eclipse.ide.core.resources.TernDocumentFile;
 import tern.eclipse.ide.ui.hover.HTMLTernTypeCollector;
-import tern.eclipse.ide.ui.utils.HTMLTernPrinter;
-import tern.eclipse.jface.text.HoverControlCreator;
-import tern.eclipse.jface.text.PresenterControlCreator;
+import tern.eclipse.ide.ui.hover.IDEHoverControlCreator;
+import tern.eclipse.ide.ui.hover.IDEPresenterControlCreator;
+import tern.eclipse.ide.ui.hover.ITernHoverInfoProvider;
+import tern.eclipse.jface.text.TernBrowserInformationControlInput;
+import tern.scriptpath.ITernScriptPath;
 import tern.utils.StringUtils;
 
 /**
  * Provides hover help documentation for Angular tags
  * 
  */
-public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor {
+public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor
+		implements ITextHoverExtension2, IInformationProviderExtension2,
+		ITernHoverInfoProvider {
 
 	private IInformationControlCreator fHoverControlCreator;
-	private IInformationControlCreator fPresenterControlCreator;
+	private IDEPresenterControlCreator fPresenterControlCreator;
+	private IIDETernProject ternProject;
 
-	public HTMLAngularTagInfoHoverProcessor() {
-		super();
+	@Override
+	public String getHoverInfo(ITextViewer textViewer, IRegion hoverRegion) {
+		TernBrowserInformationControlInput info = (TernBrowserInformationControlInput) getHoverInfo2(
+				textViewer, hoverRegion);
+		return info != null ? info.getHtml() : null;
+	}
+
+	@Override
+	public Object getHoverInfo2(ITextViewer viewer, IRegion hoverRegion) {
+		if ((hoverRegion == null) || (viewer == null)
+				|| (viewer.getDocument() == null)) {
+			return null;
+		}
+
+		int documentOffset = hoverRegion.getOffset();
+		String displayText = computeHoverHelp(viewer, documentOffset);
+
+		if (displayText == null) {
+			return null;
+		}
+
+		return new TernBrowserInformationControlInput(null, displayText, 200);
 	}
 
 	@Override
@@ -90,8 +117,8 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 			}
 		}
 		// Here the attribute is not a directive, display classic Help.
-		return formatAsAdvancedHTML(super.computeTagAttNameHelp(xmlnode,
-				parentNode, flatNode, region));
+		return super.computeTagAttNameHelp(xmlnode, parentNode, flatNode,
+				region);
 	}
 
 	protected String computeTagAttValueHelp(IDOMNode xmlnode,
@@ -104,7 +131,7 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 			Directive directive = AngularDOMUtils.getAngularDirective(project,
 					attr);
 			try {
-				IDETernProject ternProject = AngularProject
+				IIDETernProject ternProject = AngularProject
 						.getTernProject(project);
 				if (directive != null) {
 					String expression = AngularScopeHelper.getAngularValue(
@@ -143,8 +170,8 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 				Trace.trace(Trace.SEVERE, "Error while tern hover.", e);
 			}
 		}
-		return formatAsAdvancedHTML(super.computeTagAttValueHelp(xmlnode,
-				parentNode, flatNode, region));
+		return super.computeTagAttValueHelp(xmlnode, parentNode, flatNode,
+				region);
 	}
 
 	@Override
@@ -204,7 +231,7 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 			ITextRegion region, IDocument document, int documentPosition) {
 		IFile file = DOMUtils.getFile(treeNode);
 		try {
-			IDETernProject ternProject = IDETernProject.getTernProject(file
+			IIDETernProject ternProject = AngularProject.getTernProject(file
 					.getProject());
 			AngularELRegion angularRegion = AngularRegionUtils
 					.getAngularELRegion(flatNode, documentPosition,
@@ -236,21 +263,11 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 				return HTMLAngularPrinter.getDirectiveInfo(directive);
 			}
 		}
-		return formatAsAdvancedHTML(super.computeTagNameHelp(xmlnode,
-				parentNode, flatNode, region));
-	}
-
-	private String formatAsAdvancedHTML(String html) {
-		if (StringUtils.isEmpty(html)) {
-			return html;
-		}
-		StringBuffer advancedHTML = new StringBuffer(html);
-		HTMLTernPrinter.endPage(advancedHTML);
-		return advancedHTML.toString();
+		return super.computeTagNameHelp(xmlnode, parentNode, flatNode, region);
 	}
 
 	private String computeHelp(Node domNode, String expression, Integer end,
-			IFile file, IDocument document, IDETernProject ternProject,
+			IFile file, IDocument document, IIDETernProject ternProject,
 			final AngularType angularType) throws Exception {
 
 		TernAngularQuery query = new TernAngularTypeQuery(angularType);
@@ -259,12 +276,15 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 		ITernScriptPath scriptPath = AngularScopeHelper.populateScope(
 				DOMUtils.getOwnerElement(domNode), file, angularType, query);
 		HTMLTernTypeCollector collector = createCollector(angularType);
+		// update with the current tern project
+		this.ternProject = ternProject;
 		if (scriptPath != null) {
-			ternProject.request(query, query.getFiles(), scriptPath, collector);
+			ternProject.request(query, query.getFiles(), scriptPath, null,
+					null, collector);
 		} else {
-
-			ternProject.request(query, query.getFiles(), domNode, file,
-					document, collector);
+			ITernFile tf = new TernDocumentFile(file, document);
+			ternProject.request(query, query.getFiles(), null, domNode, tf,
+					collector);
 		}
 		return collector.getInfo();
 	}
@@ -275,21 +295,6 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 			return new HTMLAngularTernTypeCollector();
 		}
 		return new HTMLTernTypeCollector();
-	}
-
-	@Override
-	public IInformationControlCreator getHoverControlCreator() {
-		if (fHoverControlCreator == null)
-			fHoverControlCreator = new HoverControlCreator(
-					getInformationPresenterControlCreator());
-		return fHoverControlCreator;
-	}
-
-	// @Override
-	public IInformationControlCreator getInformationPresenterControlCreator() {
-		if (fPresenterControlCreator == null)
-			fPresenterControlCreator = new PresenterControlCreator();
-		return fPresenterControlCreator;
 	}
 
 	/**
@@ -358,8 +363,6 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 											startSymbol, endSymbol);
 								}
 							}
-							return new Region(flatNode.getStartOffset(region),
-									region.getTextLength());
 						}
 					}
 				} catch (BadLocationException e) {
@@ -370,4 +373,33 @@ public class HTMLAngularTagInfoHoverProcessor extends HTMLTagInfoHoverProcessor 
 		return null;
 	}
 
+	@Override
+	public IInformationControlCreator getHoverControlCreator() {
+		if (fHoverControlCreator == null)
+			fHoverControlCreator = new IDEHoverControlCreator(
+					getInformationPresenterControlCreator(), this);
+		return fHoverControlCreator;
+	}
+
+	@Override
+	public IDEPresenterControlCreator getInformationPresenterControlCreator() {
+		if (fPresenterControlCreator == null)
+			fPresenterControlCreator = new IDEPresenterControlCreator(this);
+		return fPresenterControlCreator;
+	}
+
+	@Override
+	public IIDETernProject getTernProject() {
+		return ternProject;
+	}
+
+	@Override
+	public ITernFile getFile() {
+		return null;
+	}
+
+	@Override
+	public Integer getOffset() {
+		return null;
+	}
 }

@@ -11,42 +11,46 @@
 package org.eclipse.angularjs.internal.ui.contentassist;
 
 import org.eclipse.angularjs.internal.ui.utils.HTMLAngularPrinter;
+import org.eclipse.wst.sse.ui.internal.contentassist.IRelevanceCompletionProposal;
+import org.eclipse.wst.xml.ui.internal.contentassist.XMLRelevanceConstants;
 
 import tern.angular.AngularType;
+import tern.angular.protocol.completions.AngularCompletionProposalRec;
 import tern.eclipse.ide.ui.contentassist.JSTernCompletionProposal;
-import tern.server.ITernServer;
+import tern.server.protocol.IJSONObjectHelper;
 
 /**
- * Extrends Javacsript Tern completion proposal to display "module" and
+ * Extrends JavaScript Tern completion proposal to display "module" and
  * "controller" information from the tern completion.
  * 
  */
 public class JSAngularCompletionProposal extends JSTernCompletionProposal
-		/*implements IRelevanceCompletionProposal*/ {
+		implements IRelevanceCompletionProposal {
 
-	private final ITernServer ternServer;
+	private final IJSONObjectHelper jsonObjectHelper;
 	private final Object completion;
 
-	public JSAngularCompletionProposal(String name, String type, String doc,
-			String url, String origin, int pos, Object completion,
-			ITernServer server, AngularType angularType, int startOffset) {
-		super(name, type, doc, url, origin, pos, startOffset);
-		this.ternServer = server;
+	public JSAngularCompletionProposal(AngularCompletionProposalRec proposal,
+			Object completion, IJSONObjectHelper jsonObjectHelper,
+			AngularType angularType) {
+		super(proposal);
+		this.jsonObjectHelper = jsonObjectHelper;
 		this.completion = completion;
+		super.setTriggerCharacters(new char[] { '.' });
 	}
 
 	@Override
 	public String getAdditionalProposalInfo() {
-		String module = ternServer.getText(completion, "module");
-		String controller = ternServer.getText(completion, "controller");
+		String module = jsonObjectHelper.getText(completion, "module");
+		String controller = jsonObjectHelper.getText(completion, "controller");
 		return HTMLAngularPrinter
 				.getAngularInfo(this, null, module, controller);
 	}
 
 	// @Override
 	protected String getAdditionalProposalInfoTitle() {
-		String module = ternServer.getText(completion, "module");
-		String controller = ternServer.getText(completion, "controller");
+		String module = jsonObjectHelper.getText(completion, "module");
+		String controller = jsonObjectHelper.getText(completion, "controller");
 
 		StringBuilder title = new StringBuilder(getName());
 		if (module != null || controller != null) {
@@ -73,8 +77,10 @@ public class JSAngularCompletionProposal extends JSTernCompletionProposal
 		return title.toString();
 	}
 
-	/*@Override
+	@Override
 	public int getRelevance() {
-		return 1000000;
-	}*/
+		// Since this proposal is limited only to Angular Expression regions,
+		// it should be higher than any of tag or attribute value proposals
+		return XMLRelevanceConstants.R_STRICTLY_VALID_TAG_NAME + 5;
+	}
 }

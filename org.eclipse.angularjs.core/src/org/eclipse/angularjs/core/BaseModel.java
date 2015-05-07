@@ -13,10 +13,11 @@ package org.eclipse.angularjs.core;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 
+import tern.ITernProject;
 import tern.angular.protocol.completions.TernAngularCompletionsQuery;
 import tern.angular.protocol.definition.TernAngularDefinitionQuery;
-import tern.eclipse.ide.core.IDETernProject;
-import tern.eclipse.ide.core.scriptpath.ITernScriptPath;
+import tern.eclipse.ide.core.IIDETernProject;
+import tern.scriptpath.ITernScriptPath;
 import tern.server.protocol.completions.ITernCompletionCollector;
 import tern.server.protocol.definition.ITernDefinitionCollector;
 
@@ -48,20 +49,19 @@ public class BaseModel {
 		return scriptPath;
 	}
 
-	protected IDETernProject getTernProject() throws CoreException {
-		IProject project = getProject();
-		return IDETernProject.getTernProject(project);
+	protected IIDETernProject getTernProject() throws CoreException {
+		return (IIDETernProject) getProject();
 	}
 
-	public IProject getProject() {
+	public ITernProject getProject() {
 		return scriptPath.getOwnerProject();
 	}
 
 	protected void execute(TernAngularCompletionsQuery query,
 			ITernCompletionCollector collector) {
 		try {
-			IDETernProject ternProject = getTernProject();
-			ternProject.request(query, query.getFiles(), scriptPath, collector);
+			IIDETernProject ternProject = getTernProject();
+			ternProject.request(query, query.getFiles(), scriptPath, null, null, collector);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -70,8 +70,8 @@ public class BaseModel {
 	protected void execute(TernAngularDefinitionQuery query,
 			ITernDefinitionCollector collector) {
 		try {
-			IDETernProject ternProject = getTernProject();
-			ternProject.request(query, query.getFiles(), scriptPath, collector);
+			IIDETernProject ternProject = getTernProject();
+			ternProject.request(query, query.getFiles(), scriptPath, null, null, collector);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

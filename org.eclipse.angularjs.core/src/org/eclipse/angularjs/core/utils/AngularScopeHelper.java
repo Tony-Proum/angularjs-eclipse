@@ -22,7 +22,7 @@ import tern.angular.modules.DOMDirectiveProvider;
 import tern.angular.protocol.Controller;
 import tern.angular.protocol.HTMLTernAngularHelper;
 import tern.angular.protocol.TernAngularQuery;
-import tern.eclipse.ide.core.scriptpath.ITernScriptPath;
+import tern.scriptpath.ITernScriptPath;
 
 /**
  * Angular scope helper.
@@ -54,7 +54,9 @@ public class AngularScopeHelper {
 						scriptPath = resourceLink.getScriptPath();
 						query.getScope().setModule(resourceLink.getModule());
 						if (angularType != AngularType.controller) {
-							if (!query.hasControllers()) {
+							if (!query.hasControllers()
+									&& !StringUtils.isEmpty(resourceLink
+											.getController())) {
 								query.getScope().getControllers()
 										.add(resourceLink.getController());
 							}

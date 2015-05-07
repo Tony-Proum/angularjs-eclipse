@@ -46,6 +46,7 @@ import org.eclipse.wst.xml.ui.internal.contentassist.XMLRelevanceConstants;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import tern.ITernFile;
 import tern.angular.AngularType;
 import tern.angular.modules.AngularModulesManager;
 import tern.angular.modules.Directive;
@@ -56,11 +57,15 @@ import tern.angular.modules.IDirectiveCollector;
 import tern.angular.modules.IDirectiveParameterCollector;
 import tern.angular.modules.Restriction;
 import tern.angular.protocol.TernAngularQuery;
+import tern.angular.protocol.completions.AngularCompletionProposalRec;
 import tern.angular.protocol.completions.TernAngularCompletionsQuery;
-import tern.eclipse.ide.core.IDETernProject;
-import tern.eclipse.ide.core.scriptpath.ITernScriptPath;
-import tern.server.ITernServer;
+import tern.eclipse.ide.core.IIDETernProject;
+import tern.eclipse.ide.core.TernCorePlugin;
+import tern.eclipse.ide.core.resources.TernDocumentFile;
+import tern.scriptpath.ITernScriptPath;
+import tern.server.protocol.IJSONObjectHelper;
 import tern.server.protocol.completions.ITernCompletionCollector;
+import tern.server.protocol.completions.TernCompletionProposalRec;
 
 /**
  * Completion in HTML editor for :
@@ -88,18 +93,28 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 			Directive directive = AngularDOMUtils.getAngularDirective(p,
 					element);
 			if (directive != null) {
-				// completion for directive parameters.
-				String paramName = contentAssistRequest.getMatchString();
-				AngularModulesManager.getInstance().collectDirectiveParameters(
-						directive, paramName,
-						new IDirectiveParameterCollector() {
+				try {
+					final IIDETernProject ternProject = TernCorePlugin
+							.getTernProject(p);
 
-							@Override
-							public void add(DirectiveParameter parameter) {
-								addDirectiveParameter(contentAssistRequest,
-										parameter, element);
-							}
-						});
+					// completion for directive parameters.
+					String paramName = contentAssistRequest.getMatchString();
+					AngularModulesManager.getInstance()
+							.collectDirectiveParameters(directive, paramName,
+									new IDirectiveParameterCollector() {
+
+										@Override
+										public void add(
+												DirectiveParameter parameter) {
+											addDirectiveParameter(
+													contentAssistRequest,
+													parameter, element,
+													ternProject);
+										}
+									});
+				} catch (CoreException e) {
+					e.printStackTrace();
+				}
 			} else {
 				// completion for directive with 'A' restriction : completion
 				// for
@@ -115,39 +130,43 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 						.getAngularDirectives(p,
 								element instanceof Element ? (Element) element
 										: null, attr);
-				AngularProject project = null;
+
 				try {
-					project = AngularProject.getAngularProject(p);
+					AngularProject angularProject = AngularProject
+							.getAngularProject(p);
+					final IIDETernProject ternProject = TernCorePlugin
+							.getTernProject(p);
+					// Starts directives completion.
+					angularProject.collectDirectives(tagName, directiveName,
+							existingDirectives, Restriction.A,
+							new IDirectiveCollector() {
+
+								@Override
+								public void add(Directive directive, String name) {
+
+									// Add the directive in the completion.
+									String displayString = name + " - "
+											+ directive.getModule().getName();
+									String additionalProposalInfo = HTMLAngularPrinter
+											.getDirectiveInfo(directive);
+									Image image = ImageResource
+											.getImage(ImageResource.IMG_DIRECTIVE);
+									addProposal(contentAssistRequest, name,
+											directive.getDirectiveValue(),
+											directive, displayString, image,
+											additionalProposalInfo, element,
+											ternProject);
+								}
+
+								@Override
+								public void add(DirectiveParameter parameter) {
+									addDirectiveParameter(contentAssistRequest,
+											parameter, element, ternProject);
+								}
+
+							});
 				} catch (CoreException e) {
 				}
-				// Starts directives completion.
-				project.collectDirectives(tagName, directiveName,
-						existingDirectives, Restriction.A,
-						new IDirectiveCollector() {
-
-							@Override
-							public void add(Directive directive, String name) {
-
-								// Add the directive in the completion.
-								String displayString = name + " - "
-										+ directive.getModule().getName();
-								String additionalProposalInfo = HTMLAngularPrinter
-										.getDirectiveInfo(directive);
-								Image image = ImageResource
-										.getImage(ImageResource.IMG_DIRECTIVE);
-								addProposal(contentAssistRequest, name,
-										directive.getDirectiveValue(),
-										directive, displayString, image,
-										additionalProposalInfo, element);
-							}
-
-							@Override
-							public void add(DirectiveParameter parameter) {
-								addDirectiveParameter(contentAssistRequest,
-										parameter, element);
-							}
-
-						});
 			}
 		}
 		super.addAttributeNameProposals(contentAssistRequest, context);
@@ -219,66 +238,70 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 		}
 
 		String matchingString = text.trim();
-		AngularProject project = null;
 		try {
-			project = AngularProject.getAngularProject(DOMUtils.getFile(attr)
-					.getProject());
+			IProject project = DOMUtils.getFile(attr).getProject();
+			AngularProject angularProject = AngularProject
+					.getAngularProject(project);
+			final IIDETernProject ternProject = TernCorePlugin
+					.getTernProject(project);
+			// Starts directives completion.
+			angularProject.collectDirectives(null, matchingString, null,
+					Restriction.C, new IDirectiveCollector() {
+
+						@Override
+						public void add(Directive directive, String name) {
+
+							// Add the directive in the completion.
+							String displayString = name + " - "
+									+ directive.getModule().getName();
+							String additionalProposalInfo = HTMLAngularPrinter
+									.getDirectiveInfo(directive);
+							Image image = ImageResource
+									.getImage(ImageResource.IMG_DIRECTIVE);
+							addProposal(contentAssistRequest, name,
+									directive.getDirectiveValue(),
+									displayString, image,
+									additionalProposalInfo);
+						}
+
+						@Override
+						public void add(DirectiveParameter parameter) {
+							// bo nothing
+						}
+
+						private void addProposal(
+								final ContentAssistRequest contentAssistRequest,
+								String name, DirectiveValue directiveValue,
+								String displayString, Image image,
+								String additionalProposalInfo) {
+							String replacementString = directiveValue == DirectiveValue.none ? name
+									: name + ":";
+							int replacementOffset = contentAssistRequest
+									.getReplacementBeginPosition();
+							int replacementLength = contentAssistRequest
+									.getReplacementLength();
+							if (index != -1) {
+								replacementOffset += index;
+								replacementLength += index;
+							}
+							int cursorPosition = getCursorPositionForProposedText(replacementString);
+
+							IContextInformation contextInformation = null;
+
+							int relevance = XMLRelevanceConstants.R_NONE;
+
+							ICompletionProposal proposal = new HTMLAngularCompletionProposal(
+									replacementString, replacementOffset,
+									replacementLength, cursorPosition, image,
+									displayString, contextInformation,
+									additionalProposalInfo, relevance,
+									ternProject);
+							contentAssistRequest.addProposal(proposal);
+						}
+
+					});
 		} catch (CoreException e) {
 		}
-		// Starts directives completion.
-		project.collectDirectives(null, matchingString, null, Restriction.C,
-				new IDirectiveCollector() {
-
-					@Override
-					public void add(Directive directive, String name) {
-
-						// Add the directive in the completion.
-						String displayString = name + " - "
-								+ directive.getModule().getName();
-						String additionalProposalInfo = HTMLAngularPrinter
-								.getDirectiveInfo(directive);
-						Image image = ImageResource
-								.getImage(ImageResource.IMG_DIRECTIVE);
-						addProposal(contentAssistRequest, name,
-								directive.getDirectiveValue(), displayString,
-								image, additionalProposalInfo);
-					}
-
-					@Override
-					public void add(DirectiveParameter parameter) {
-						// bo nothing
-					}
-
-					private void addProposal(
-							final ContentAssistRequest contentAssistRequest,
-							String name, DirectiveValue directiveValue,
-							String displayString, Image image,
-							String additionalProposalInfo) {
-						String replacementString = directiveValue == DirectiveValue.none ? name
-								: name + ":";
-						int replacementOffset = contentAssistRequest
-								.getReplacementBeginPosition();
-						int replacementLength = contentAssistRequest
-								.getReplacementLength();
-						if (index != -1) {
-							replacementOffset += index;
-							replacementLength += index;
-						}
-						int cursorPosition = getCursorPositionForProposedText(replacementString);
-
-						IContextInformation contextInformation = null;
-
-						int relevance = XMLRelevanceConstants.R_NONE;
-
-						ICompletionProposal proposal = new HTMLAngularCompletionProposal(
-								replacementString, replacementOffset,
-								replacementLength, cursorPosition, image,
-								displayString, contextInformation,
-								additionalProposalInfo, relevance);
-						contentAssistRequest.addProposal(proposal);
-					}
-
-				});
 	}
 
 	private void populateAngularProposals(
@@ -288,7 +311,7 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 		IFile file = DOMUtils.getFile(element);
 		IProject eclipseProject = file.getProject();
 		try {
-			IDETernProject ternProject = AngularProject
+			IIDETernProject ternProject = AngularProject
 					.getTernProject(eclipseProject);
 
 			// get the expression to use for Tern completion
@@ -309,20 +332,20 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 			ITernCompletionCollector collector = new ITernCompletionCollector() {
 
 				@Override
-				public void addProposal(String name, String type, String doc,
-						String url, String origin, int pos, Object completion,
-						ITernServer ternServer) {
-
+				public void addProposal(TernCompletionProposalRec proposalItem,
+						Object completion, IJSONObjectHelper jsonObjectHelper) {
 					ICompletionProposal proposal = null;
 					if (isModuleOrController(angularType)) {
 
 						MarkupAngularCompletionProposal markupPproposal = new MarkupAngularCompletionProposal(
-								name, type, doc, url, origin, pos, completion,
-								ternServer, angularType, replacementOffset);
+								new AngularCompletionProposalRec(proposalItem,
+										replacementOffset), completion,
+								jsonObjectHelper, angularType);
 
 						// in the case of "module", "controller" completion
 						// the value must replace the existing value.
-						String replacementString = "\"" + name + "\"";
+						String replacementString = "\"" + proposalItem.name
+								+ "\"";
 						int replacementLength = contentAssistRequest
 								.getReplacementLength();
 						int cursorPosition = getCursorPositionForProposedText(replacementString) - 2;
@@ -334,9 +357,12 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 								.getImage(angularType));
 						proposal = markupPproposal;
 					} else {
-						proposal = new JSAngularCompletionProposal(name, type,
-								doc, url, origin, pos, completion, ternServer,
-								angularType, replacementOffset);
+						proposal = new JSAngularCompletionProposal(
+								new AngularCompletionProposalRec(
+										proposalItem,
+										replacementOffset
+												- (proposalItem.end - proposalItem.start)),
+								completion, jsonObjectHelper, angularType);
 					}
 					contentAssistRequest.addProposal(proposal);
 
@@ -344,11 +370,12 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 			};
 
 			if (scriptPath != null) {
-				ternProject.request(query, query.getFiles(), scriptPath,
-						collector);
+				ternProject.request(query, query.getFiles(), scriptPath, null,
+						null, collector);
 			} else {
-				ternProject.request(query, query.getFiles(), element, file,
-						document, collector);
+				ITernFile tf = new TernDocumentFile(file, document);
+				ternProject.request(query, query.getFiles(), null, element, tf,
+						collector);
 			}
 
 		} catch (Exception e) {
@@ -459,82 +486,86 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 			// completion for directive with 'E' restriction.
 			String directiveName = contentAssistRequest.getMatchString();
 
-			AngularProject project = null;
 			try {
-				project = AngularProject.getAngularProject(DOMUtils.getFile(
-						node).getProject());
-			} catch (CoreException e) {
-			}
-			project.collectDirectives(DirectiveHelper.ANY_TAG, directiveName,
-					null, Restriction.E, new IDirectiveCollector() {
+				IProject p = DOMUtils.getFile(node).getProject();
+				AngularProject project = AngularProject.getAngularProject(p);
+				final IIDETernProject ternProject = project.getTernProject(p);
 
-						@Override
-						public void add(Directive directive, String name) {
+				project.collectDirectives(DirectiveHelper.ANY_TAG,
+						directiveName, null, Restriction.E,
+						new IDirectiveCollector() {
 
-							// Add the directive in the completion.
-							String displayString = name + " - "
-									+ directive.getModule().getName();
-							String additionalProposalInfo = HTMLAngularPrinter
-									.getDirectiveInfo(directive);
-							Image image = ImageResource
-									.getImage(ImageResource.IMG_DIRECTIVE);
+							@Override
+							public void add(Directive directive, String name) {
 
-							addProposal(contentAssistRequest, directive, name,
-									displayString, image,
-									additionalProposalInfo);
+								// Add the directive in the completion.
+								String displayString = name + " - "
+										+ directive.getModule().getName();
+								String additionalProposalInfo = HTMLAngularPrinter
+										.getDirectiveInfo(directive);
+								Image image = ImageResource
+										.getImage(ImageResource.IMG_DIRECTIVE);
 
-						}
+								addProposal(contentAssistRequest, directive,
+										name, displayString, image,
+										additionalProposalInfo);
 
-						@Override
-						public void add(DirectiveParameter parameter) {
-							// do nothing
-						}
-
-						private void addProposal(
-								final ContentAssistRequest contentAssistRequest,
-								Directive directive, String name,
-								String displayString, Image image,
-								String additionalProposalInfo) {
-							StringBuilder replacementString = new StringBuilder(
-									"");
-							replacementString.append(name);
-
-							Collection<DirectiveParameter> parameters = directive
-									.getParameters();
-							for (DirectiveParameter parameter : parameters) {
-								if (!parameter.isOptionnal()) {
-									replacementString.append(" ")
-											.append(parameter.getName())
-											.append("=\"\"");
-								}
 							}
 
-							replacementString.append(">");
-							replacementString.append("</");
-							replacementString.append(name);
-							replacementString.append(">");
+							@Override
+							public void add(DirectiveParameter parameter) {
+								// do nothing
+							}
 
-							int replacementOffset = contentAssistRequest
-									.getReplacementBeginPosition();
-							int replacementLength = contentAssistRequest
-									.getReplacementLength();
-							int cursorPosition = getCursorPositionForProposedText(replacementString
-									.toString());
+							private void addProposal(
+									final ContentAssistRequest contentAssistRequest,
+									Directive directive, String name,
+									String displayString, Image image,
+									String additionalProposalInfo) {
+								StringBuilder replacementString = new StringBuilder(
+										"");
+								replacementString.append(name);
 
-							IContextInformation contextInformation = null;
+								Collection<DirectiveParameter> parameters = directive
+										.getParameters();
+								for (DirectiveParameter parameter : parameters) {
+									if (!parameter.isOptionnal()) {
+										replacementString.append(" ")
+												.append(parameter.getName())
+												.append("=\"\"");
+									}
+								}
 
-							int relevance = XMLRelevanceConstants.R_TAG_NAME;
+								replacementString.append(">");
+								replacementString.append("</");
+								replacementString.append(name);
+								replacementString.append(">");
 
-							ICompletionProposal proposal = new AngularMarkupCompletionProposal(
-									replacementString.toString(),
-									replacementOffset, replacementLength,
-									cursorPosition, image, displayString,
-									contextInformation, additionalProposalInfo,
-									relevance);
-							contentAssistRequest.addProposal(proposal);
-						}
+								int replacementOffset = contentAssistRequest
+										.getReplacementBeginPosition();
+								int replacementLength = contentAssistRequest
+										.getReplacementLength();
+								int cursorPosition = getCursorPositionForProposedText(replacementString
+										.toString());
 
-					});
+								IContextInformation contextInformation = null;
+
+								int relevance = XMLRelevanceConstants.R_TAG_NAME;
+
+								ICompletionProposal proposal = new AngularMarkupCompletionProposal(
+										replacementString.toString(),
+										replacementOffset, replacementLength,
+										cursorPosition, image, displayString,
+										contextInformation,
+										additionalProposalInfo, relevance,
+										ternProject);
+								contentAssistRequest.addProposal(proposal);
+							}
+
+						});
+			} catch (CoreException e) {
+			}
+
 		}
 		super.addTagNameProposals(contentAssistRequest, childPosition, context);
 	}
@@ -553,7 +584,8 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 
 	public void addDirectiveParameter(
 			final ContentAssistRequest contentAssistRequest,
-			DirectiveParameter parameter, IDOMNode element) {
+			DirectiveParameter parameter, IDOMNode element,
+			IIDETernProject ternProject) {
 		// Add the directive parameter in the
 		// completion.
 		if (hasParameterAttribute(parameter, element)) {
@@ -568,7 +600,7 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 		Image image = ImageResource.getImage(ImageResource.IMG_DIRECTIVE_PARAM);
 		addProposal(contentAssistRequest, parameter.getName(),
 				DirectiveValue.required, null, displayString, image,
-				additionalProposalInfo, element);
+				additionalProposalInfo, element, ternProject);
 	}
 
 	public boolean hasParameterAttribute(DirectiveParameter parameter,
@@ -585,7 +617,7 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 	private void addProposal(final ContentAssistRequest contentAssistRequest,
 			String name, DirectiveValue directiveValue, Directive directive,
 			String displayString, Image image, String additionalProposalInfo,
-			IDOMNode element) {
+			IDOMNode element, IIDETernProject ternProject) {
 		StringBuilder replacementString = new StringBuilder(name);
 		if (directiveValue != DirectiveValue.none)
 			replacementString.append("=\"\"");
@@ -615,7 +647,8 @@ public class HTMLAngularTagsCompletionProposalComputer extends
 		ICompletionProposal proposal = new HTMLAngularCompletionProposal(
 				replacementString.toString(), replacementOffset,
 				replacementLength, cursorPosition, image, displayString,
-				contextInformation, additionalProposalInfo, relevance);
+				contextInformation, additionalProposalInfo, relevance,
+				ternProject);
 		contentAssistRequest.addProposal(proposal);
 	}
 

@@ -24,6 +24,7 @@ import org.eclipse.core.resources.IResourceDeltaVisitor;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 
+import tern.TernResourcesManager;
 import tern.angular.AngularType;
 import tern.angular.modules.AbstractAngularModulesRegistry;
 import tern.angular.modules.Directive;
@@ -33,10 +34,11 @@ import tern.angular.modules.IDirectiveSyntax;
 import tern.angular.modules.Module;
 import tern.angular.modules.Restriction;
 import tern.angular.protocol.completions.TernAngularCompletionsQuery;
-import tern.eclipse.ide.core.IDETernProject;
-import tern.eclipse.ide.core.utils.FileUtils;
-import tern.server.ITernServer;
+import tern.eclipse.ide.core.IIDETernProject;
+import tern.eclipse.ide.core.TernCorePlugin;
+import tern.server.protocol.IJSONObjectHelper;
 import tern.server.protocol.completions.ITernCompletionCollector;
+import tern.server.protocol.completions.TernCompletionProposalRec;
 
 public class CustomAngularModulesRegistry extends
 		AbstractAngularModulesRegistry implements IResourceChangeListener,
@@ -82,20 +84,20 @@ public class CustomAngularModulesRegistry extends
 					return;
 				}
 				super.clear();
-				IDETernProject ternProject = IDETernProject
+				IIDETernProject ternProject = TernCorePlugin
 						.getTernProject(project);
 				TernAngularCompletionsQuery query = new TernAngularCompletionsQuery(
 						AngularType.directives);
 				query.setExpression("");
-				ternProject.request(query, query.getFiles(),
+				ternProject.request(query, query.getFiles(), null, null, null,
 						new ITernCompletionCollector() {
 
 							@Override
-							public void addProposal(String name, String type,
-									String doc, String url, String origin,
-									int pos, Object completion,
-									ITernServer ternServer) {
-								String moduleName = ternServer.getText(
+							public void addProposal(
+									TernCompletionProposalRec proposal,
+									Object completion,
+									IJSONObjectHelper jsonObjectHelper) {
+								String moduleName = jsonObjectHelper.getText(
 										completion, "module");
 								if (!StringUtils.isEmpty(moduleName)) {
 									tern.angular.modules.Module module = CustomAngularModulesRegistry.this
@@ -106,12 +108,12 @@ public class CustomAngularModulesRegistry extends
 									}
 
 									List<String> tagsName = new ArrayList<String>();
-									String restrict = ternServer.getText(
+									String restrict = jsonObjectHelper.getText(
 											completion, "restrict");
 									DirectiveValue directiveValue = DirectiveValue.none;
-									new Directive(name, AngularType.model,
-											null, tagsName, restrict,
-											directiveValue, module);
+									new Directive(proposal.name,
+											AngularType.model, null, tagsName,
+											restrict, directiveValue, module);
 								}
 
 							}
@@ -120,7 +122,7 @@ public class CustomAngularModulesRegistry extends
 			}
 		} catch (Exception e) {
 			Trace.trace(Trace.WARNING,
-					"Error while refrsh custom angular directives.", e);
+					"Error while refresh custom angular directives.", e);
 		}
 	}
 
@@ -148,16 +150,10 @@ public class CustomAngularModulesRegistry extends
 			return true;
 		case IResource.PROJECT:
 			IProject project = (IProject) resource;
-			if (!(project.isAccessible())) {
-				return false;
-			}
-			if (!AngularProject.hasAngularNature(project)) {
-				return false;
-			}
-			return true;
-
+			return this.project.equals(project);
 		case IResource.FILE:
-			if (FileUtils.isJSFile(resource) || FileUtils.isHTMLFile(resource)) {
+			if (TernResourcesManager.isJSFile(resource.getName())
+					|| TernResourcesManager.isHTMLFile(resource)) {
 				clear();
 			}
 			return true;
